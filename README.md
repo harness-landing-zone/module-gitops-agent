@@ -2,16 +2,26 @@
 
 Registers a Harness GitOps agent and, when enabled, installs its runtime Helm chart. It supports a managed Argo CD runtime, a bring-your-own Argo CD runtime, Argo AppProjects, and Harness project mappings.
 
-## Usage
+## Before you start
+
+- Use OpenTofu 1.9 or later and an existing Harness organization. Project-scoped agents and mappings also need an existing Harness project.
+- Supply a Harness API key with access to the target resources. The examples accept it as a sensitive input; do not put it in a configuration file.
+- For Helm installation, configure both the Helm and Kubernetes providers against the same cluster and context.
+- These examples assume Argo CD CRDs already exist. Only a managed installation that owns the CRDs should enable `runtime.install_crds`.
+
+The examples use a Harness SaaS endpoint in their provider configuration and server endpoints from `values/base.yaml`. Review those endpoints for your environment.
+
+## Quick start
+
+This example creates an organization-scoped agent and its managed runtime. Configure the providers in your calling root; the [managed Kubernetes example](examples/managed-kubernetes) includes the complete provider and input configuration.
 
 ~~~hcl
 module "gitops_agent" {
-  source = "<namespace>/gitops-agent/harness"
-  # version = "x.y.z"
+  source = "git::https://github.com/harness-landing-zone/module-gitops-agent.git?ref=v0.1.0"
 
   agent = {
     account_id = var.harness_account_id
-    org_id     = "example_org"
+    org_id     = var.harness_org_id
     identifier = "platform_gitops"
     name       = "Platform GitOps"
     namespace  = "platform-gitops"
@@ -36,7 +46,7 @@ module "gitops_agent" {
 }
 ~~~
 
-Configure the Harness, Helm, and Kubernetes providers in the calling root module. Keep the Harness API key in a CI secret store or in provider-supported environment variables, never in source files.
+Replace the `platform` mapping key with your existing Harness project identifier and the repository URL with your approved repository. The destination is the agent namespace so this example does not assume access to additional namespaces.
 
 ## Runtime modes
 
@@ -45,9 +55,17 @@ Configure the Harness, Helm, and Kubernetes providers in the calling root module
 | Managed Argo CD | false | gitops-helm | 1.2.10 | Namespace and Argo CRDs, unless this release creates them |
 | Bring your own Argo CD | true | gitops-helm-byoa | 1.3.14 | Working Argo CD, Redis, repo server, controllers, and Argo ConfigMaps in the same namespace |
 
-Harness treats existing_installation as immutable. Create a new agent instead of switching an existing agent between managed and BYO modes.
+Choose `agent.existing_installation` when creating the agent; changing an existing agent between managed and BYO modes is not covered by these examples or tests.
 
-For a namespaced agent where Argo CRDs already exist, set runtime.install_crds to false. Set it to true only when this managed release owns the CRDs. BYO installations never install CRDs.
+For a namespaced agent where Argo CRDs already exist, keep `runtime.install_crds = false`. Set it to true only when this managed release owns the CRDs. The BYO example keeps it false and reuses an existing namespace and Argo CD installation.
+
+## Resource ownership
+
+With `install_helm = true`, the module owns the Helm release and the `gitops-agent` token Secret. It also owns the agent namespace when `runtime.create_namespace = true`; destroying that namespace can delete everything in it.
+
+With `install_helm = false` (the default), it creates the Harness registration and exposes the deployment configuration and sensitive token for an external deployment process. It does not create a namespace, token Secret, or Helm release. AppProjects and mappings remain enabled for entries that request them, so the external runtime must be available before those resources can be created. The IDP lifecycle integration is still to be validated.
+
+The module does not create workload namespaces or grant access to additional destination namespaces. Namespace access, repository credentials, and shared CRDs remain the caller's responsibility.
 
 ## OpenShift
 
@@ -79,11 +97,31 @@ The Argo controller needs Kubernetes access to every destination namespace. Defi
 
 | Directory | Purpose |
 | --- | --- |
-| [examples/generic-test](examples/generic-test) | Managed Argo CD on standard Kubernetes, including two project mappings |
-| [examples/namespaced-openshift](examples/namespaced-openshift) | Managed, namespaced OpenShift agent with small local-cluster resource requests |
-| [examples/BYO-Argo](examples/BYO-Argo) | Agent that connects to Argo CD already installed in its namespace |
+| [managed-kubernetes](examples/managed-kubernetes) | Organization-scoped managed agent on Kubernetes, with one project mapping |
+| [managed-openshift](examples/managed-openshift) | Project-scoped managed agent on OpenShift, with one mapping and small resource requests |
+| [byo-argocd](examples/byo-argocd) | Project-scoped agent connected to existing Argo CD on OpenShift; no new AppProjects or mappings |
 
-Examples are starting points. Replace every placeholder, use a unique agent identifier and namespace, and review the full plan before applying.
+Every example uses the same `main.tf` / `variables.tf` / `README.md` layout and input names. They reference `../..` to test the module in this checkout. If you copy an example outside this repository, use the versioned Git source from the quick start.
+
+### Running an example
+
+From the module repository root:
+
+~~~bash
+cd examples/managed-kubernetes
+export TF_VAR_harness_account_id="your-account-id"
+export TF_VAR_harness_org_id="your_org"
+export TF_VAR_harness_project_id="your_project"
+export TF_VAR_kube_context="your-cluster-context"
+
+tofu init
+tofu validate
+tofu plan
+~~~
+
+OpenTofu prompts for `harness_platform_api_key` as a sensitive input. For automation, inject `TF_VAR_harness_platform_api_key` from your secret store. Both cluster providers use `~/.kube/config` by default; set `TF_VAR_kubeconfig_path` to use another file.
+
+Review the example's agent identifier, namespace, repository URL, and prerequisites before planning. Use a unique agent identifier and namespace for each managed installation; BYO must use the namespace of the existing Argo CD. Run `tofu apply` only when you are ready to provision the reviewed configuration. These commands use real credentials; the tests below do not.
 
 ## Requirements
 
@@ -140,7 +178,7 @@ See [variables.tf](variables.tf) for complete nested object schemas and validati
 
 ## Testing
 
-Add native OpenTofu tests under tests/*.tofutest.hcl for module behavior that does not need a real Harness account or cluster. Mock the Harness, Helm, and Kubernetes providers and use command = plan so tests only evaluate planned configuration.
+The native tests in [tests/module.tofutest.hcl](tests/module.tofutest.hcl) use mocked Harness, Helm, and Kubernetes providers and `command = plan`. Provider downloads require network access during initialization; the tests need no API key or kubeconfig and create no live resources.
 
 ~~~bash
 tofu fmt -check -recursive
@@ -149,8 +187,10 @@ tofu validate
 tofu test
 ~~~
 
-Test managed and BYO chart selection, OpenShift values, namespace creation, AppProject slugging, and invalid mapping inputs. Keep live cluster and Harness acceptance tests in separate, explicitly configured environments.
+The named scenarios match the examples: `managed_kubernetes`, `managed_openshift`, and `byo_argocd`. Additional checks cover external runtime ownership, mapping restrictions, and token-value rejection. They validate planned module configuration, not chart installation, agent connectivity, or the IDP pipeline lifecycle. Live acceptance testing remains separate.
+
+To validate an example's provider and input configuration, run `tofu init -backend=false` and `tofu validate` in its directory. Validation does not require real input values or provision resources.
 
 ## Security
 
-OpenTofu state contains the agent token when this module creates the Kubernetes Secret. Use an encrypted remote backend with restricted access. Never commit API keys, kubeconfigs, state files, plans, or tfvars files containing credentials.
+The Harness registration and sensitive output can put the agent token in OpenTofu state even when Helm installation is disabled. `sensitive` masks display; it does not remove values from state. Use an encrypted remote backend with restricted access. Never commit API keys, kubeconfigs, state files, plans, or tfvars files containing credentials.

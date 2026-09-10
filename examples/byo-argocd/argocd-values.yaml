@@ -1,4 +1,5 @@
-# Temporary CRC test instance. Release: byo-argocd-test; namespace: gitops-instance.
+# Optional values for a separate Argo CD installation on OpenShift.
+# This file is not consumed by the GitOps agent module.
 fullnameOverride: argocd
 openshift:
   enabled: true

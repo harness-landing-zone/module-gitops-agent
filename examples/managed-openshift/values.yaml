@@ -1,4 +1,4 @@
-# Small requests make this example practical on a local OpenShift cluster.
+# Small requests for the managed-openshift example on a local cluster.
 # Size these for production through runtime.values_yaml.
 agent:
   resources:
