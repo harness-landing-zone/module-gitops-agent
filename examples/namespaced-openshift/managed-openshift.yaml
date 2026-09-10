@@ -1,0 +1,18 @@
+# Small requests make this example practical on a local OpenShift cluster.
+# Size these for production through runtime.values_yaml.
+agent:
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+argo-cd:
+  controller:
+    resources:
+      requests: {cpu: 250m, memory: 512Mi}
+  applicationSet:
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+  repoServer:
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+  redis:
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}

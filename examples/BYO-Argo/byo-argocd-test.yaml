@@ -1,0 +1,28 @@
+# Temporary CRC test instance. Release: byo-argocd-test; namespace: gitops-instance.
+fullnameOverride: argocd
+openshift:
+  enabled: true
+createClusterRoles: false
+crds:
+  install: false
+controller:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+repoServer:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+redis:
+  securityContext:
+    runAsUser: null
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+server:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}

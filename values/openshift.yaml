@@ -1,0 +1,14 @@
+agent:
+  openshift:
+    enabled: true
+argo-cd:
+  # The managed chart's Argo CD subchart has its own OpenShift switch.
+  openshift:
+    enabled: true
+  redis:
+    securityContext:
+      runAsUser: null
+  # base.yaml disables the Harness plugin. Do not retain its fixed-UID containers.
+  repoServer:
+    initContainers: []
+    extraContainers: []
